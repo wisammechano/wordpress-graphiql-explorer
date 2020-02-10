@@ -11,6 +11,7 @@ import {
 } from "graphql";
 import "whatwg-fetch";
 import snippets from "./snippets";
+import EndpointForm from "./EndpointForm";
 
 /**
  * Style the app
@@ -22,7 +23,7 @@ import "graphiql-code-exporter/CodeExporter.css";
 window.wpGraphiQLSettings = {
   nonce: null,
   graphqlEndpoint:
-    "http://ec2-54-90-219-131.compute-1.amazonaws.com:8080/wordpress/index.php?gql"
+    "http://ec2-54-90-219-131.compute-1.amazonaws.com:8080/wordpress/gql"
 };
 
 const parameters = {};
@@ -82,17 +83,6 @@ const headers = {
 };
 
 if (nonce) headers["X-WP-Nonce"] = nonce;
-
-function graphQLFetcher(graphQLParams) {
-  return fetch(endpoint, {
-    method: `post`,
-    headers,
-    body: JSON.stringify(graphQLParams)
-    //credentials: `include`
-  }).then(function(response) {
-    return response.json();
-  });
-}
 
 // When the query and variables string is edited, update the URL bar so
 // that it can be easily shared.
@@ -191,11 +181,34 @@ class App extends React.Component {
     schema: null,
     query: DEFAULT_QUERY,
     explorerIsOpen: storedExplorerPaneState,
-    codeExporterIsOpen: storedCodeExporterPaneState
+    codeExporterIsOpen: storedCodeExporterPaneState,
+    endpoint: endpoint,
+    method: "POST"
+  };
+
+  _graphQLFetcher = graphQLParams => {
+    let endpointURL = new URL(this.state.endpoint);
+    const params = {
+      method: this.state.method.toLowerCase(),
+      headers
+      //credentials: `include`
+    };
+
+    if (params.method === "get") {
+      Object.keys(graphQLParams).forEach(key =>
+        endpointURL.searchParams.append(key, graphQLParams[key])
+      );
+    } else {
+      params.body = JSON.stringify(graphQLParams);
+    }
+
+    return fetch(endpointURL, params).then(function(response) {
+      return response.json();
+    });
   };
 
   componentDidMount() {
-    graphQLFetcher({
+    this._graphQLFetcher({
       query: getIntrospectionQuery()
     }).then(result => {
       const newState = { schema: buildClientSchema(result.data) };
@@ -299,6 +312,10 @@ class App extends React.Component {
     return false;
   };
 
+  _handleEndpoint = endpoint => {
+    this.setState({ endpoint });
+  };
+
   _handleEditQuery = query => {
     parameters.query = query;
     updateURL();
@@ -356,7 +373,7 @@ class App extends React.Component {
         />
         <GraphiQL
           ref={ref => (this._graphiql = ref)}
-          fetcher={graphQLFetcher}
+          fetcher={this._graphQLFetcher}
           schema={schema}
           query={query}
           onEditQuery={this._handleEditQuery}
@@ -383,6 +400,23 @@ class App extends React.Component {
               onClick={this._handleToggleExporter}
               label="Code Exporter"
               title="Toggle Code Exporter"
+            />
+
+            <GraphiQL.Menu label={this.state.method} title="HTTP Method">
+              <GraphiQL.MenuItem
+                label="POST"
+                title="POST"
+                onSelect={e => this.setState({ method: e.target.title })}
+              />
+              <GraphiQL.MenuItem
+                label="GET"
+                title="GET"
+                onSelect={e => this.setState({ method: e.target.title })}
+              />
+            </GraphiQL.Menu>
+            <EndpointForm
+              handleEndpoint={this._handleEndpoint}
+              endpoint={this.state.endpoint}
             />
           </GraphiQL.Toolbar>
         </GraphiQL>
