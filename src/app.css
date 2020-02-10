@@ -1,0 +1,19 @@
+html,
+body {
+    margin: 0;
+    padding: 0;
+}
+
+#wp-graphiql {
+    display: flex;
+    flex: 1;
+}
+
+#wp-graphiql .spinner {
+    visibility: visible;
+    background: none;
+}
+
+.wrap {
+    height: 100vh;
+}
