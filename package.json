@@ -2,7 +2,6 @@
   "name": "wp-graphiql",
   "description": "This plugin provides the GraphiQL IDE as an admin page in WordPress, allowing the GraphQL WPGraphQL schema to be browsed from within WordPress.",
   "author": "WPGraphQL, Digital First Media, Jason Bahl",
-  "homepage": "http://wpgraphql.com",
   "bugs": {
     "url": "https://github.com/wp-graphql/wp-graphiql/issues"
   },
@@ -18,6 +17,7 @@
     "graphql": "^14.6.0",
     "react": "^16.12.0",
     "react-dom": "^16.12.0",
+    "http-headers-validation": "0.0.1",
     "whatwg-fetch": "^3.0.0"
   },
   "scripts": {

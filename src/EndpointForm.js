@@ -10,8 +10,8 @@ export default class EndpointForm extends Component {
       color: "#555",
       margin: "0 5px",
       padding: "3px 11px 5px",
-      maxWidth: 300,
-      width: 300
+      maxWidth: 200,
+      width: 200
     };
 
     return (

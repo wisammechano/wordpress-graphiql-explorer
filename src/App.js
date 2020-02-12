@@ -1,5 +1,6 @@
 import React from "react";
 
+import headerUtils from "http-headers-validation";
 import GraphiQL from "graphiql";
 import GraphiQLExplorer from "graphiql-explorer";
 import CodeExporter from "graphiql-code-exporter";
@@ -12,6 +13,7 @@ import {
 import "whatwg-fetch";
 import snippets from "./snippets";
 import EndpointForm from "./EndpointForm";
+import HeadersModal from "./HeadersModal";
 
 /**
  * Style the app
@@ -19,12 +21,6 @@ import EndpointForm from "./EndpointForm";
 import "graphiql/graphiql.css";
 import "./app.css";
 import "graphiql-code-exporter/CodeExporter.css";
-
-window.wpGraphiQLSettings = {
-  nonce: null,
-  graphqlEndpoint:
-    "http://ec2-54-90-219-131.compute-1.amazonaws.com:8080/wordpress/gql"
-};
 
 const parameters = {};
 
@@ -67,22 +63,6 @@ for (var k in parameters) {
     otherParams[k] = parameters[k];
   }
 }
-
-let nonce =
-  window.wpGraphiQLSettings && window.wpGraphiQLSettings.nonce
-    ? window.wpGraphiQLSettings.nonce
-    : null;
-let endpoint =
-  window.wpGraphiQLSettings && window.wpGraphiQLSettings.graphqlEndpoint
-    ? window.wpGraphiQLSettings.graphqlEndpoint
-    : window.location.origin;
-
-const headers = {
-  Accept: `application/json`,
-  "Content-Type": `application/json`
-};
-
-if (nonce) headers["X-WP-Nonce"] = nonce;
 
 // When the query and variables string is edited, update the URL bar so
 // that it can be easily shared.
@@ -176,22 +156,53 @@ const storedCodeExporterPaneState =
       `true`
     : false;
 
+const endpointStorage =
+  window.localStorage && window.localStorage.getItem("graphiql:endpoint");
+
+const headersStorage =
+  window.localStorage &&
+  JSON.parse(window.localStorage.getItem("graphiql:headers"));
+
 class App extends React.Component {
   state = {
     schema: null,
     query: DEFAULT_QUERY,
     explorerIsOpen: storedExplorerPaneState,
     codeExporterIsOpen: storedCodeExporterPaneState,
-    endpoint: endpoint,
-    method: "POST"
+    endpoint: endpointStorage ? endpointStorage : "",
+    method: "POST",
+    headers: headersStorage
+      ? headersStorage
+      : {
+          Accept: `application/json`,
+          "Content-Type": `application/json`
+          //credentials: `include`
+        },
+    headersModalShown: false
+  };
+
+  handleHeaders = headers => {
+    const keys = Object.keys(headers);
+    keys.forEach(k => {
+      if (!headerUtils.validateHeader(k, headers[k])) delete headers[k];
+    });
+
+    this.setState({ headers });
+    if (window.localStorage) {
+      window.localStorage.setItem(`graphiql:headers`, JSON.stringify(headers));
+    }
   };
 
   _graphQLFetcher = graphQLParams => {
-    let endpointURL = new URL(this.state.endpoint);
+    let endpointURL = "";
+    try {
+      endpointURL = new URL(this.state.endpoint);
+    } catch (ex) {
+      throw new TypeError("Endpoint URL is invalid");
+    }
     const params = {
       method: this.state.method.toLowerCase(),
-      headers
-      //credentials: `include`
+      headers: this.state.headers
     };
 
     if (params.method === "get") {
@@ -207,50 +218,64 @@ class App extends React.Component {
     });
   };
 
-  componentDidMount() {
+  __queryIntrospection = () => {
+    if (!this.state.endpoint) alert("Enter a valid endpoint URL");
     this._graphQLFetcher({
       query: getIntrospectionQuery()
-    }).then(result => {
-      const newState = { schema: buildClientSchema(result.data) };
+    })
+      .then(result => {
+        const newState = { schema: buildClientSchema(result.data) };
 
-      if (this.state.query === null) {
-        try {
-          const siteMetadataType = result.data.__schema.types.find(
-            type => type.name === `SiteSiteMetadata` && type.kind === `OBJECT`
-          );
-          if (siteMetadataType) {
-            const titleField = siteMetadataType.fields.find(
-              field =>
-                field.name === `title` &&
-                field.type &&
-                field.type.kind === `SCALAR` &&
-                field.type.name === `String`
+        if (this.state.query === null) {
+          try {
+            const siteMetadataType = result.data.__schema.types.find(
+              type => type.name === `SiteSiteMetadata` && type.kind === `OBJECT`
             );
-
-            if (titleField) {
-              newState.query = generateDefaultFallbackQuery(
-                QUERY_EXAMPLE_SITEMETADATA_TITLE
+            if (siteMetadataType) {
+              const titleField = siteMetadataType.fields.find(
+                field =>
+                  field.name === `title` &&
+                  field.type &&
+                  field.type.kind === `SCALAR` &&
+                  field.type.name === `String`
               );
+
+              if (titleField) {
+                newState.query = generateDefaultFallbackQuery(
+                  QUERY_EXAMPLE_SITEMETADATA_TITLE
+                );
+              }
             }
+            // eslint-disable-next-line no-empty
+          } catch (e) {
+            console.error(e);
           }
-          // eslint-disable-next-line no-empty
-        } catch (e) {
-          console.error(e);
+          if (!newState.query) {
+            newState.query = generateDefaultFallbackQuery(
+              QUERY_EXAMPLE_FALLBACK
+            );
+          }
         }
-        if (!newState.query) {
-          newState.query = generateDefaultFallbackQuery(QUERY_EXAMPLE_FALLBACK);
-        }
-      }
 
-      this.setState(newState);
-    });
-
+        this.setState(newState);
+      })
+      .catch(err =>
+        alert(
+          "Failed to fetch. Check if the URL is correct and you have internet connection."
+        )
+      );
+  };
+  componentDidMount() {
+    if (this.state.endpoint) this.__queryIntrospection();
     const editor = this._graphiql.getQueryEditor();
     editor.setOption(`extraKeys`, {
       ...(editor.options.extraKeys || {}),
       "Shift-Alt-LeftClick": this._handleInspectOperation
     });
   }
+
+  _toggleHeadersModal = () =>
+    this.setState({ headersModalShown: !this.state.headersModalShown });
 
   _handleInspectOperation = (cm, mousePos) => {
     const parsedQuery = parse(this.state.query || ``);
@@ -314,6 +339,9 @@ class App extends React.Component {
 
   _handleEndpoint = endpoint => {
     this.setState({ endpoint });
+    if (window.localStorage) {
+      window.localStorage.setItem(`graphiql:endpoint`, endpoint);
+    }
   };
 
   _handleEditQuery = query => {
@@ -382,6 +410,11 @@ class App extends React.Component {
         >
           <GraphiQL.Toolbar>
             <GraphiQL.Button
+              onClick={() => this.__queryIntrospection()}
+              label="Query Introspection"
+              title="Query the API for fields, mutations, and queries"
+            />
+            <GraphiQL.Button
               onClick={() => this._graphiql.handlePrettifyQuery()}
               label="Prettify"
               title="Prettify Query (Shift-Ctrl-P)"
@@ -400,6 +433,12 @@ class App extends React.Component {
               onClick={this._handleToggleExporter}
               label="Code Exporter"
               title="Toggle Code Exporter"
+            />
+
+            <GraphiQL.Button
+              onClick={this._toggleHeadersModal}
+              label="Headers"
+              title="Set HTTP Headers"
             />
 
             <GraphiQL.Menu label={this.state.method} title="HTTP Method">
@@ -421,6 +460,14 @@ class App extends React.Component {
           </GraphiQL.Toolbar>
         </GraphiQL>
         {codeExporter}
+        <HeadersModal
+          show={this.state.headersModalShown}
+          headers={this.state.headers}
+          handleClose={() =>
+            this.setState({ headersModalShown: !this.state.headersModalShown })
+          }
+          handleHeaders={this.handleHeaders}
+        />
       </React.Fragment>
     );
   }
