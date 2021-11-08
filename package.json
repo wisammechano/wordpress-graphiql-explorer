@@ -11,7 +11,7 @@
     "react-scripts": "^3.3.0"
   },
   "dependencies": {
-    "graphiql": "^0.13.2",
+    "graphiql": "^1.4.7",
     "graphiql-code-exporter": "^2.0.5",
     "graphiql-explorer": "^0.4.6",
     "graphql": "^14.6.0",
